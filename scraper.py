@@ -8,6 +8,8 @@ import unicodedata
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+logger = logging.getLogger(__name__)
+
 _USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
@@ -96,8 +98,6 @@ def _get_postcode(region: str) -> str:
     key = _normalize(region.strip())
     prefixes = _REGIONS_NORM.get(key)
     return prefixes[0] if prefixes else ""
-
-logger = logging.getLogger(__name__)
 
 
 # ── Seen-IDs dedup (PostgreSQL) ───────────────────────────────────────────────
