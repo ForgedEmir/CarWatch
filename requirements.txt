@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+requests
+beautifulsoup4
+lxml
+python-telegram-bot[job-queue]
+python-dotenv
+pillow
+aiohttp
