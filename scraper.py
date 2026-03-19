@@ -2,13 +2,42 @@ import requests
 import json
 import os
 import logging
+import random
+import time as _time
+import unicodedata
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import pathlib
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
-}
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+]
+
+def _headers() -> dict:
+    return {"User-Agent": random.choice(_USER_AGENTS)}
+
+
+def _get(url: str, **kwargs) -> "requests.Response | None":
+    for attempt in range(3):
+        try:
+            r = requests.get(url, **kwargs)
+            if r.status_code == 429:
+                logger.warning(f"Rate limited, waiting {2**attempt}s...")
+                _time.sleep(2 ** attempt)
+                continue
+            return r
+        except requests.Timeout:
+            if attempt < 2:
+                _time.sleep(1)
+        except Exception as e:
+            logger.warning(f"Request failed: {e}")
+            break
+    return None
+
 
 # Belgian city → zip code prefix mapping for AutoScout24 region filtering
 BELGIAN_REGIONS = {
@@ -29,10 +58,15 @@ BELGIAN_REGIONS = {
     "hasselt":   ["3500", "3501", "3510", "3511", "3512"],
 }
 
+# Pre-normalized lookup built once at import time
+_REGIONS_NORM: dict = {
+    unicodedata.normalize("NFD", k.lower()).encode("ascii", "ignore").decode(): v
+    for k, v in BELGIAN_REGIONS.items()
+}
+
 
 def _normalize(s: str) -> str:
     """Lowercase + strip accents for fuzzy matching."""
-    import unicodedata
     return unicodedata.normalize("NFD", s.lower()).encode("ascii", "ignore").decode()
 
 
@@ -40,13 +74,11 @@ def _region_matches_zip(region: str, zip_code: str) -> bool:
     """Check if a zip code belongs to a Belgian region."""
     if not region or not zip_code:
         return False
-    region_norm = _normalize(region.strip())
-    # Build a normalized lookup once (keys with accents → without)
-    for key, prefixes in BELGIAN_REGIONS.items():
-        if _normalize(key) == region_norm:
-            return any(zip_code.startswith(p) for p in prefixes)
-    # Direct string match fallback
-    return region_norm in _normalize(zip_code)
+    key = _normalize(region.strip())
+    prefixes = _REGIONS_NORM.get(key)
+    if prefixes:
+        return any(zip_code.startswith(p) for p in prefixes)
+    return key in _normalize(zip_code)
 
 
 def _is_excluded(text: str, exclude: str) -> bool:
@@ -61,32 +93,45 @@ def _get_postcode(region: str) -> str:
     """Return the main postcode for a Belgian city name (used for radius search)."""
     if not region:
         return ""
-    region_norm = _normalize(region.strip())
-    for key, prefixes in BELGIAN_REGIONS.items():
-        if _normalize(key) == region_norm:
-            return prefixes[0]  # first / main postcode of the city
-    return ""
-
-DATA_DIR = pathlib.Path(os.environ.get("DATA_DIR", "./data"))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-SEEN_FILE = DATA_DIR / "seen_ids.json"
+    key = _normalize(region.strip())
+    prefixes = _REGIONS_NORM.get(key)
+    return prefixes[0] if prefixes else ""
 
 logger = logging.getLogger(__name__)
 
 
-# ── Seen-IDs dedup ────────────────────────────────────────────────────────────
+# ── Seen-IDs dedup (PostgreSQL) ───────────────────────────────────────────────
 
-def load_seen() -> list:
-    if SEEN_FILE.exists():
-        with open(SEEN_FILE) as f:
-            data = json.load(f)
-            return data if isinstance(data, list) else list(data)
-    return []
+def load_seen() -> set:
+    from database import SessionLocal
+    from models import SeenId
+    db = SessionLocal()
+    try:
+        rows = db.query(SeenId.listing_id).all()
+        return {r.listing_id for r in rows}
+    except Exception:
+        return set()
+    finally:
+        db.close()
 
 
-def save_seen(seen_list: list):
-    with open(SEEN_FILE, "w") as f:
-        json.dump(seen_list[-2000:], f)
+def save_seen(new_ids: list):
+    if not new_ids:
+        return
+    from database import SessionLocal
+    from models import SeenId
+    db = SessionLocal()
+    try:
+        existing = {r.listing_id for r in db.query(SeenId.listing_id).all()}
+        for lid in new_ids:
+            if lid not in existing:
+                db.add(SeenId(listing_id=lid))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"save_seen error: {e}")
+    finally:
+        db.close()
 
 
 # ── Generic Adevinta scraper (2ememain + 2dehands share the same API) ─────────
@@ -113,7 +158,9 @@ def _scrape_adevinta(params: dict, domain: str, source_name: str, id_prefix: str
 
         try:
             logger.info(f"[{source_name}] GET {base}")
-            r = requests.get(base, headers=HEADERS, timeout=15, verify=False)
+            r = _get(base, headers=_headers(), timeout=15)
+            if r is None:
+                break
             data = r.json()
             listings = data.get("listings", [])
             logger.info(f"[{source_name}] page {page}: {len(listings)} listings from API")
@@ -244,7 +291,9 @@ def scrape_2ememain(params: dict) -> list:
         url = build_2ememain_url(params, offset=page * 30)
         try:
             logger.info(f"[2ememain] GET {url}")
-            r = requests.get(url, headers=HEADERS, timeout=15)
+            r = _get(url, headers=_headers(), timeout=15)
+            if r is None:
+                break
             data = r.json()
             listings = data.get("listings", [])
             logger.info(f"[2ememain] page {page}: {len(listings)} listings from API")
@@ -380,7 +429,9 @@ def scrape_autoscout24(params: dict) -> list:
     for page in range(1, 4):
         url = build_autoscout_url(params) + f"&page={page}"
         try:
-            r = requests.get(url, headers=HEADERS, timeout=15)
+            r = _get(url, headers=_headers(), timeout=15)
+            if r is None:
+                break
             soup = BeautifulSoup(r.text, "lxml")
             articles = soup.find_all("article", attrs={"data-testid": "list-item"})
             if not articles:
@@ -486,8 +537,7 @@ def scrape_autoscout24(params: dict) -> list:
 
 def run_scrape(params: dict, return_all: bool = False) -> list:
     """Run both scrapers in parallel and return results."""
-    seen_list = load_seen()
-    seen_set  = set(seen_list)
+    seen_set = load_seen()
 
     logger.info(f"Scraping — exclude={params.get('exclude')!r}")
     logger.info("Scraping 2ememain & AutoScout24 in parallel...")
@@ -510,9 +560,7 @@ def run_scrape(params: dict, return_all: bool = False) -> list:
 
     new_results = [r for r in all_results if r["id"] not in seen_set]
 
-    for r in new_results:
-        seen_list.append(r["id"])
-    save_seen(seen_list)
+    save_seen([r["id"] for r in new_results])
 
     logger.info(f"Total: {len(all_results)} | New: {len(new_results)}")
 

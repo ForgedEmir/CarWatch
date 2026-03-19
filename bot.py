@@ -9,7 +9,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from scraper import run_scrape
 from ai_analyzer import compute_deal_scores
-import pathlib
+from database import SessionLocal
+from models import AppConfig
 
 load_dotenv()
 
@@ -20,40 +21,46 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-DATA_DIR      = pathlib.Path(os.environ.get("DATA_DIR", "./data"))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-CONFIG_FILE   = DATA_DIR / "config.json"
 TOKEN         = os.environ.get("TELEGRAM_TOKEN", "")
 ALLOWED_USER_ID = int(os.environ.get("ALLOWED_USER_ID", "0"))
 
 
 # ── Config helpers ────────────────────────────────────────────────────────────
 
-def load_config() -> dict:
-    default = {
-        "make":           "",
-        "price_min":      0,
-        "price_max":      50000,
-        "year_min":       0,
-        "km_max":         300000,
-        "region":         "",
-        "radius_km":      25,
-        "exclude":        "",
-        "fuel":           "",
-        "transmission":   "",
-        "interval_hours": 2,
-        "active":         True,
-    }
-    if CONFIG_FILE.exists():
-        with open(CONFIG_FILE) as f:
-            saved = json.load(f)
-            default.update(saved)
-    return default
+_DEFAULT_CONFIG = {
+    "make": "", "price_min": 0, "price_max": 50000,
+    "year_min": 0, "km_max": 300000, "region": "",
+    "radius_km": 25, "exclude": "", "fuel": "",
+    "transmission": "", "interval_hours": 2, "active": True,
+}
 
+def load_config() -> dict:
+    cfg = dict(_DEFAULT_CONFIG)
+    db = SessionLocal()
+    try:
+        row = db.query(AppConfig).filter(AppConfig.key == "search_config").first()
+        if row:
+            cfg.update(json.loads(row.value))
+    except Exception as e:
+        logger.warning(f"load_config DB error: {e}")
+    finally:
+        db.close()
+    return cfg
 
 def save_config(cfg: dict):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
+    db = SessionLocal()
+    try:
+        row = db.query(AppConfig).filter(AppConfig.key == "search_config").first()
+        if row:
+            row.value = json.dumps(cfg)
+        else:
+            db.add(AppConfig(key="search_config", value=json.dumps(cfg)))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"save_config error: {e}")
+    finally:
+        db.close()
 
 
 def _fmt(val, fallback="Tous"):

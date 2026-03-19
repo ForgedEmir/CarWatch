@@ -369,12 +369,13 @@ const App = () => {
         if (!cfg) return;
         setIsLoading(true);
         try {
+            const apiKey = window.__API_KEY || "";
             await fetch("/api/config", {
                 method:"POST",
-                headers:{"Content-Type":"application/json"},
+                headers:{"Content-Type":"application/json", "X-Api-Key": apiKey},
                 body:JSON.stringify(cfg),
             });
-            const res  = await fetch("/api/search");
+            const res = await fetch("/api/search", { headers: {"X-Api-Key": apiKey} });
             const data = await res.json();
             if (data.status==="success") {
                 setResults(data.results||[]);

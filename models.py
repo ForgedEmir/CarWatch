@@ -21,3 +21,13 @@ class Listing(Base):
     
     deal_score  = Column(Float, nullable=True)
     has_carpass = Column(String, nullable=True)
+
+
+class AppConfig(Base):
+    __tablename__ = "app_config"
+    key   = Column(String, primary_key=True)
+    value = Column(String)
+
+class SeenId(Base):
+    __tablename__ = "seen_ids"
+    listing_id = Column(String, primary_key=True)

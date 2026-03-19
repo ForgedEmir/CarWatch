@@ -1,9 +1,13 @@
 import os
 import logging
+import asyncio
+import time
+import hashlib
+import json as _json
 from dotenv import load_dotenv
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s: %(message)s")
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +22,15 @@ from ai_analyzer import compute_deal_scores
 import bot
 
 Base.metadata.create_all(bind=engine)
+
+API_SECRET = os.environ.get("API_SECRET", "")
+
+def _check_key(x_api_key: str = Header(default="")):
+    if API_SECRET and x_api_key != API_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+_cache: dict = {"ts": 0.0, "key": "", "data": None}
+CACHE_TTL = 300  # 5 minutes
 
 app = FastAPI(title="CarWatch API")
 
@@ -35,7 +48,14 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
     with open(os.path.join("static", "index.html"), "r", encoding="utf-8") as f:
-        return f.read()
+        html = f.read()
+    if API_SECRET:
+        html = html.replace(
+            "</head>",
+            f'<script>window.__API_KEY="{API_SECRET}";</script></head>',
+            1,
+        )
+    return html
 
 
 class ConfigUpdate(BaseModel):
@@ -57,7 +77,7 @@ async def get_config():
 
 
 @app.post("/api/config")
-async def update_config(config: ConfigUpdate):
+async def update_config(config: ConfigUpdate, _: None = Depends(_check_key)):
     cfg = bot.load_config()
     cfg.update(config.model_dump())
     bot.save_config(cfg)
@@ -65,13 +85,19 @@ async def update_config(config: ConfigUpdate):
 
 
 @app.get("/api/search")
-async def search():
-    """Scrape both sources in parallel, score results, and return them."""
-    cfg     = bot.load_config()
-    results = run_scrape(cfg, return_all=True)
+async def search(_: None = Depends(_check_key)):
+    cfg = bot.load_config()
+    cfg_key = hashlib.md5(_json.dumps(cfg, sort_keys=True).encode()).hexdigest()
+    now = time.time()
+    if _cache["data"] and now - _cache["ts"] < CACHE_TTL and _cache["key"] == cfg_key:
+        return _cache["data"]
+    loop = asyncio.get_event_loop()
+    results = await loop.run_in_executor(None, lambda: run_scrape(cfg, return_all=True))
     results = compute_deal_scores(results)
     results.sort(key=lambda r: r.get("deal_score") or 0, reverse=True)
-    return {"status": "success", "count": len(results), "results": results}
+    response = {"status": "success", "count": len(results), "results": results}
+    _cache.update({"ts": now, "key": cfg_key, "data": response})
+    return response
 
 
 @app.post("/api/search/background")
