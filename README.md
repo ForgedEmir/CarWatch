@@ -111,6 +111,20 @@ Procfile         → Railway process config
 requirements.txt → Python dependencies
 ```
 
+## Community & Contributing
+
+CarWatch is a private project, but we welcome community input. Below are the resources available to help you get started contributing.
+
+| File | Description |
+|------|-------------|
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Guidelines for contributing to the project |
+| [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) | Our code of conduct and community expectations |
+| [LICENSE](./LICENSE) | MIT license terms |
+| [SECURITY.md](./SECURITY.md) | How to report security vulnerabilities |
+| [.github/ISSUE_TEMPLATE/bug_report.md](.github/ISSUE_TEMPLATE/bug_report.md) | Template for reporting bugs |
+| [.github/ISSUE_TEMPLATE/feature_request.md](.github/ISSUE_TEMPLATE/feature_request.md) | Template for suggesting features |
+| [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) | Template for pull requests |
+
 ## License
 
 MIT
