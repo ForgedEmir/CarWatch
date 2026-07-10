@@ -1,64 +1,71 @@
+<div align="center">
+
+![CarWatch](assets/hero.png)
+
 # CarWatch 🚗
 
-Real-time Belgian used car alert system. Scrapes **2ememain.be**, **2dehands.be** and **AutoScout24.be** in parallel, scores deals mathematically, and pushes **Telegram notifications** the moment a matching listing goes online.
+### Real-time Belgian used car alert system
+
+[![Python](https://img.shields.io/badge/Python-3.10+-1e3a5f?logo=python&logoColor=white&style=for-the-badge)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white&style=for-the-badge)](https://fastapi.tiangolo.com)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white&style=for-the-badge)](https://core.telegram.org/bots)
+[![License: MIT](https://img.shields.io/badge/License-MIT-cc8a3d?style=for-the-badge)](LICENSE)
+
+`#car-alerts` `#belgium` `#telegram-bot` `#web-scraping` `#fastapi`
+`#2ememain` `#autoscout24` `#2dehands` `#deal-finder`
+
+</div>
+
+---
+
+Scrapes **2ememain.be**, **2dehands.be** and **AutoScout24.be** in parallel, scores deals mathematically (0–100), and pushes **instant Telegram notifications** the moment a matching listing goes online.
+
+---
 
 ## Features
 
-- **Multi-source scraping** — 2ememain, 2dehands & AutoScout24 scraped in parallel
-- **Deal scoring** — each car gets a 0–100 score based on price, mileage and year
-- **Telegram alerts** — instant notification when a new matching car appears
-- **Radius search** — search within X km of any Belgian city
-- **Filters** — make, budget, mileage, year, fuel type, gearbox, region
-- **Web dashboard** — clean React UI to browse and sort results
-- **Deployable on Railway** in minutes
+| Capability | Detail |
+|---|---|
+| **Multi-source scraping** | 2ememain, 2dehands & AutoScout24 — parallel, with retry logic |
+| **Deal scoring** | Each car scored 0–100 based on price, mileage, year |
+| **Telegram alerts** | Instant push notifications for new matching listings |
+| **Radius search** | Search within X km of any Belgian city |
+| **Filters** | Make, budget, mileage, year, fuel type, gearbox, region |
+| **Web dashboard** | Clean UI to browse and sort results |
+| **One-click deploy** | Railway-ready with `Procfile` + PostgreSQL |
+
+---
 
 ## Stack
 
-- **Backend** — FastAPI + SQLAlchemy (SQLite / PostgreSQL)
-- **Frontend** — React 18 (CDN, no build step) + Tailwind CSS
-- **Bot** — python-telegram-bot with job queue scheduler
-- **Scraping** — requests + BeautifulSoup4 + Adevinta JSON API
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI + SQLAlchemy (SQLite / PostgreSQL) |
+| Frontend | React 18 (CDN, no build step) + Tailwind CSS |
+| Bot | `python-telegram-bot` with job queue scheduler |
+| Scraping | `requests` + BeautifulSoup4 + Adevinta JSON API |
+| Deal scoring | Custom mathematical model (price/mileage/year) |
 
-## Getting Started
+---
 
-### 1. Clone the repo
+## Quick start
 
 ```bash
 git clone https://github.com/ForgedEmir/CarWatch.git
 cd CarWatch
-```
 
-### 2. Create a virtual environment
-
-```bash
-python -m venv venv
-venv\Scripts\activate      # Windows
-# source venv/bin/activate # macOS / Linux
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-```
 
-### 3. Configure environment variables
-
-```bash
 cp .env.example .env
-```
-
-Edit `.env`:
-
-```env
-TELEGRAM_TOKEN=your_token_from_botfather
-ALLOWED_USER_ID=your_telegram_user_id
-DATABASE_URL=sqlite:///./data/carwatch.db
-DATA_DIR=./data
+# Edit .env with your TELEGRAM_TOKEN and ALLOWED_USER_ID
 ```
 
 **Get your Telegram credentials:**
-- `TELEGRAM_TOKEN` → talk to [@BotFather](https://t.me/BotFather), send `/newbot`
-- `ALLOWED_USER_ID` → talk to [@userinfobot](https://t.me/userinfobot)
+- `TELEGRAM_TOKEN` → [@BotFather](https://t.me/BotFather), send `/newbot`
+- `ALLOWED_USER_ID` → [@userinfobot](https://t.me/userinfobot)
 
-### 4. Run locally
-
-In two separate terminals:
+### Run
 
 ```bash
 # Terminal 1 — web interface
@@ -68,17 +75,21 @@ uvicorn app:app --reload
 python bot.py
 ```
 
-Open [http://localhost:8000](http://localhost:8000)
+Open **http://localhost:8000**
+
+---
 
 ## Deploy on Railway
 
-1. Push this repo to GitHub
-2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
-3. Add a **PostgreSQL** plugin — Railway sets `DATABASE_URL` automatically
-4. Add environment variables: `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`
-5. Railway reads the `Procfile` and starts both the web server and the bot
+1. Push to GitHub → go to [railway.app](https://railway.app)
+2. **New Project** → **Deploy from GitHub repo**
+3. Add **PostgreSQL** plugin (Railway sets `DATABASE_URL` automatically)
+4. Set env vars: `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`
+5. Railway reads the `Procfile` and starts web server + bot
 
-## Telegram Bot Commands
+---
+
+## Telegram commands
 
 | Command | Description |
 |---|---|
@@ -94,37 +105,40 @@ Open [http://localhost:8000](http://localhost:8000)
 | `/intervalle 1` | Check every N hours (default: 2) |
 | `/search` | Trigger an immediate search |
 
-## Project Structure
+---
+
+## Project structure
 
 ```
-app.py           → FastAPI server + web UI
-bot.py           → Telegram bot + alert scheduler
-scraper.py       → Parallel scraper (2ememain, 2dehands, AutoScout24)
-ai_analyzer.py   → Mathematical deal scoring
-worker.py        → Background thread + database save
-database.py      → SQLAlchemy setup
-models.py        → Listing model
-media_service.py → Async image download + WebP optimization
-data_pipeline.py → Data normalization helpers
-static/          → React frontend (index.html, app.js, styles.css)
-Procfile         → Railway process config
-requirements.txt → Python dependencies
+├── app.py              FastAPI server + web UI
+├── bot.py              Telegram bot + alert scheduler
+├── scraper.py          Parallel scraper (3 sources)
+├── ai_analyzer.py      Mathematical deal scoring (0–100)
+├── worker.py           Background thread + database save
+├── database.py         SQLAlchemy setup
+├── models.py           Listing model
+├── media_service.py    Async image download + WebP optimization
+├── data_pipeline.py    Data normalization helpers
+├── static/             React frontend (CDN, no build)
+├── Procfile            Railway process config
+└── requirements.txt    Python dependencies
 ```
 
-## Community & Contributing
+---
 
-CarWatch is a private project, but we welcome community input. Below are the resources available to help you get started contributing.
+## Contributing
 
-| File | Description |
-|------|-------------|
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | Guidelines for contributing to the project |
-| [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) | Our code of conduct and community expectations |
-| [LICENSE](./LICENSE) | MIT license terms |
-| [SECURITY.md](./SECURITY.md) | How to report security vulnerabilities |
-| [.github/ISSUE_TEMPLATE/bug_report.md](.github/ISSUE_TEMPLATE/bug_report.md) | Template for reporting bugs |
-| [.github/ISSUE_TEMPLATE/feature_request.md](.github/ISSUE_TEMPLATE/feature_request.md) | Template for suggesting features |
-| [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) | Template for pull requests |
+| Resource | Description |
+|---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, workflow, PR process |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
+| [LICENSE](LICENSE) | MIT — free to use, modify, distribute |
 
-## License
+---
 
-MIT
+<div align="center">
+
+**CarWatch** — Never miss the right car again.
+
+</div>
